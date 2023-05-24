@@ -1,0 +1,8 @@
+[package]
+name = "html-to-markdown"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+comrak = "0.18.0"
+html5ever = "0.26.0"
