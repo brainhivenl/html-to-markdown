@@ -108,6 +108,8 @@ fn create_node<'a>(name: &str, attrs: &[Attribute], line: usize) -> Option<AstNo
             line,
         ),
         "li" => node(NodeValue::Item(NodeList::default()), line),
+        "b" | "strong" => node(NodeValue::Strong, line),
+        "i" | "em" => node(NodeValue::Emph, line),
         _ => return None,
     })
 }
@@ -116,7 +118,20 @@ fn create_node<'a>(name: &str, attrs: &[Attribute], line: usize) -> Option<AstNo
 fn valid_elem(name: &str) -> bool {
     matches!(
         name,
-        "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "ul" | "li" | "ol" | "a"
+        "h1" | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "p"
+            | "ul"
+            | "li"
+            | "ol"
+            | "a"
+            | "b"
+            | "strong"
+            | "i"
+            | "em"
     )
 }
 
@@ -248,5 +263,17 @@ mod tests {
             "<a href=\"https://example.com\">example</a>",
             "[example](https://example.com)\n",
         );
+    }
+
+    #[test]
+    fn test_strong() {
+        assert_render("<strong>hello world</strong>", "**hello world**\n");
+        assert_render("<b>hello world</b>", "**hello world**\n");
+    }
+
+    #[test]
+    fn test_emphasis() {
+        assert_render("<em>hello world</em>", "*hello world*\n");
+        assert_render("<i>hello world</i>", "*hello world*\n");
     }
 }
