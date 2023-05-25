@@ -1,7 +1,7 @@
 use std::{cell::RefCell, io::Cursor};
 
 use comrak::{
-    nodes::{Ast, AstNode, LineColumn, ListType, NodeHeading, NodeList, NodeValue},
+    nodes::{Ast, AstNode, LineColumn, ListType, NodeHeading, NodeLink, NodeList, NodeValue},
     Arena, ComrakOptions,
 };
 use html5ever::{
@@ -9,6 +9,7 @@ use html5ever::{
     tokenizer::{
         BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
     },
+    Attribute,
 };
 
 mod error;
@@ -65,41 +66,57 @@ fn heading<'a>(level: u8, line: usize) -> AstNode<'a> {
 }
 
 #[inline]
-fn create_node<'a>(name: &str, line: usize) -> Option<AstNode<'a>> {
-    match name {
-        "h1" => Some(heading(1, line)),
-        "h2" => Some(heading(2, line)),
-        "h3" => Some(heading(3, line)),
-        "h4" => Some(heading(4, line)),
-        "h5" => Some(heading(5, line)),
-        "h6" => Some(heading(6, line)),
-        "p" => Some(node(NodeValue::Paragraph, line)),
-        "ul" => Some(node(
+fn attr_or_default(name: &str, attrs: &[Attribute]) -> String {
+    attrs
+        .iter()
+        .find(|a| a.name.prefix.is_none() && &a.name.local == name)
+        .map(|a| a.value.to_string())
+        .unwrap_or_default()
+}
+
+#[inline]
+fn create_node<'a>(name: &str, attrs: &[Attribute], line: usize) -> Option<AstNode<'a>> {
+    Some(match name {
+        "a" => node(
+            NodeValue::Link(NodeLink {
+                url: attr_or_default("href", attrs),
+                title: attr_or_default("title", attrs),
+            }),
+            1,
+        ),
+        "h1" => heading(1, line),
+        "h2" => heading(2, line),
+        "h3" => heading(3, line),
+        "h4" => heading(4, line),
+        "h5" => heading(5, line),
+        "h6" => heading(6, line),
+        "p" => node(NodeValue::Paragraph, line),
+        "ul" => node(
             NodeValue::List(NodeList {
                 list_type: ListType::Bullet,
                 bullet_char: b'-',
                 ..NodeList::default()
             }),
             line,
-        )),
-        "ol" => Some(node(
+        ),
+        "ol" => node(
             NodeValue::List(NodeList {
                 list_type: ListType::Ordered,
                 start: 1,
                 ..NodeList::default()
             }),
             line,
-        )),
-        "li" => Some(node(NodeValue::Item(NodeList::default()), line)),
-        _ => None,
-    }
+        ),
+        "li" => node(NodeValue::Item(NodeList::default()), line),
+        _ => return None,
+    })
 }
 
 #[inline]
 fn valid_elem(name: &str) -> bool {
     matches!(
         name,
-        "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "ul" | "li" | "ol"
+        "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "ul" | "li" | "ol" | "a"
     )
 }
 
@@ -112,7 +129,7 @@ impl<'a> TokenSink for Sink<'a> {
                 Token::DoctypeToken(_) => {}
                 Token::TagToken(tag) => match tag.kind {
                     TagKind::StartTag => {
-                        if let Some(node) = create_node(tag.name.as_ref(), line as usize) {
+                        if let Some(node) = create_node(&tag.name, &tag.attrs, line as usize) {
                             self.stack.push(self.arena.alloc(node));
                         }
                     }
@@ -222,6 +239,14 @@ mod tests {
         assert_render(
             "<ol><li>first item</li><li>second item</li></ol>",
             "1.  first item\n2.  second item\n",
+        );
+    }
+
+    #[test]
+    fn test_link() {
+        assert_render(
+            "<a href=\"https://example.com\">example</a>",
+            "[example](https://example.com)\n",
         );
     }
 }
