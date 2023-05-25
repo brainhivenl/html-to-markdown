@@ -146,15 +146,15 @@ impl<'a> TokenSink for Sink<'a> {
     }
 }
 
-pub fn render(input: String) -> Result<String, Error> {
+pub fn parse_document<'a>(
+    arena: &'a Arena<AstNode<'a>>,
+    input: String,
+) -> Result<&'a AstNode<'a>, Error> {
     let chunk = StrTendril::from(input);
     let mut input = BufferQueue::new();
     input.push_back(chunk.try_reinterpret().map_err(|_| "buffer invalid")?);
 
-    let arena = Arena::new();
-    let sink = Sink::new(&arena);
-
-    let mut tok = Tokenizer::new(sink, TokenizerOpts::default());
+    let mut tok = Tokenizer::new(Sink::new(arena), TokenizerOpts::default());
     let _ = tok.feed(&mut input);
     tok.end();
 
@@ -164,6 +164,13 @@ pub fn render(input: String) -> Result<String, Error> {
     if let Some(e) = tok.sink.error {
         return Err(e);
     }
+
+    Ok(root)
+}
+
+pub fn render(input: String) -> Result<String, Error> {
+    let arena = Arena::new();
+    let root = parse_document(&arena, input)?;
 
     let mut writer = Cursor::new(vec![]);
     comrak::format_commonmark(root, &ComrakOptions::default(), &mut writer)?;
