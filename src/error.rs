@@ -5,6 +5,7 @@ use std::{
     string::FromUtf8Error,
 };
 
+/// An error that can occur when converting HTML to markdown
 #[derive(Debug)]
 pub enum Error {
     IOError(io::Error),

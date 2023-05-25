@@ -1,3 +1,36 @@
+//! # HTML to CommonMark
+//! 
+//! Convert HTML to markdown (CommonMark). Uses [html5ever](https://crates.io/crates/html5ever) for parsing HTML and [comrak](https://crates.io/crates/comrak) for generating markdown output. It generates a comrak AST based on the HTML input and then converts it to markdown using `comrak::format_commonmark`.
+//!
+//! ## Usage
+//!
+//! ```rust
+//! fn example() {
+//!     let html = "<h1>Hello World</h1>".to_string();
+//!     let markdown = html_to_markdown::render(html)
+//!         .expect("failed to convert HTML to markdown");
+//!
+//!     println!("{}", markdown); // # Hello World
+//! }
+//! ```
+//! 
+//! ## Features
+//! 
+//! The following HTML elements are supported (other elements will be stripped):
+//! 
+//! - `a`
+//! - `h1`
+//! - `h2`
+//! - `h3`
+//! - `h4`
+//! - `h5`
+//! - `h6`
+//! - `p`
+//! - `ul`
+//! - `ol`
+//! - `li`
+//! - `em`/`i`
+//! - `strong`/`b`
 use std::{cell::RefCell, io::Cursor};
 
 use comrak::{
@@ -16,7 +49,7 @@ mod error;
 
 pub use error::Error;
 
-pub struct Sink<'a> {
+struct Sink<'a> {
     error: Option<Error>,
     arena: &'a Arena<AstNode<'a>>,
     stack: Vec<&'a AstNode<'a>>,
@@ -178,6 +211,7 @@ impl<'a> TokenSink for Sink<'a> {
     }
 }
 
+/// Parse an HTML document into a [comrak](https://crates.io/crates/comrak) AST
 pub fn parse_document<'a>(
     arena: &'a Arena<AstNode<'a>>,
     input: String,
@@ -200,6 +234,7 @@ pub fn parse_document<'a>(
     Ok(root)
 }
 
+/// Convert a HTML document into markdown (CommonMark)
 pub fn render(input: String) -> Result<String, Error> {
     let arena = Arena::new();
     let root = parse_document(&arena, input)?;
