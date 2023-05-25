@@ -7,7 +7,7 @@ use std::{
 };
 
 use comrak::{
-    nodes::{Ast, AstNode, LineColumn, NodeHeading, NodeValue},
+    nodes::{Ast, AstNode, LineColumn, ListType, NodeHeading, NodeList, NodeValue},
     Arena, ComrakOptions,
 };
 use html5ever::{
@@ -20,6 +20,7 @@ use html5ever::{
 #[derive(Debug)]
 pub enum Error {
     IOError(io::Error),
+    ParseError(Cow<'static, str>),
     Utf8Error(FromUtf8Error),
     Other(Cow<'static, str>),
 }
@@ -30,6 +31,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::IOError(e) => e.fmt(f),
+            Error::ParseError(e) => e.fmt(f),
             Error::Utf8Error(e) => e.fmt(f),
             Error::Other(e) => e.fmt(f),
         }
@@ -109,6 +111,7 @@ fn heading<'a>(level: u8, line: usize) -> AstNode<'a> {
     )
 }
 
+#[inline]
 fn create_node<'a>(name: &str, line: usize) -> Option<AstNode<'a>> {
     match name {
         "h1" => Some(heading(1, line)),
@@ -118,8 +121,33 @@ fn create_node<'a>(name: &str, line: usize) -> Option<AstNode<'a>> {
         "h5" => Some(heading(5, line)),
         "h6" => Some(heading(6, line)),
         "p" => Some(node(NodeValue::Paragraph, line)),
+        "ul" => Some(node(
+            NodeValue::List(NodeList {
+                list_type: ListType::Bullet,
+                bullet_char: b'-',
+                ..NodeList::default()
+            }),
+            line,
+        )),
+        "ol" => Some(node(
+            NodeValue::List(NodeList {
+                list_type: ListType::Ordered,
+                start: 1,
+                ..NodeList::default()
+            }),
+            line,
+        )),
+        "li" => Some(node(NodeValue::Item(NodeList::default()), line)),
         _ => None,
     }
+}
+
+#[inline]
+fn valid_elem(name: &str) -> bool {
+    matches!(
+        name,
+        "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "ul" | "li" | "ol"
+    )
 }
 
 impl<'a> TokenSink for Sink<'a> {
@@ -128,13 +156,14 @@ impl<'a> TokenSink for Sink<'a> {
     fn process_token(&mut self, token: Token, line: u64) -> TokenSinkResult<Self::Handle> {
         let f = || {
             match token {
-                Token::DoctypeToken(_) => todo!(),
+                Token::DoctypeToken(_) => {}
                 Token::TagToken(tag) => match tag.kind {
                     TagKind::StartTag => {
                         if let Some(node) = create_node(tag.name.as_ref(), line as usize) {
                             self.stack.push(self.arena.alloc(node));
                         }
                     }
+                    TagKind::EndTag if !valid_elem(&tag.name) => {}
                     TagKind::EndTag => {
                         let node = self.stack.pop().unwrap();
                         let parent = self.cur()?;
@@ -142,18 +171,14 @@ impl<'a> TokenSink for Sink<'a> {
                         parent.append(node);
                     }
                 },
-                Token::CommentToken(_) => todo!(),
+                Token::CommentToken(_) => {}
                 Token::CharacterTokens(s) => {
-                    let node = self.stack.last_mut().unwrap();
-
-                    node.append(self.arena.alloc(AstNode::new(RefCell::new(Ast::new(
-                        NodeValue::Text(s.to_string()),
-                        LineColumn { line: 0, column: 0 },
-                    )))));
+                    self.cur()?
+                        .append(self.arena.alloc(node(NodeValue::Text(s.to_string()), 0)));
                 }
-                Token::NullCharacterToken => todo!(),
+                Token::NullCharacterToken => {}
                 Token::EOFToken => {}
-                Token::ParseError(_) => todo!(),
+                Token::ParseError(err) => return Err(Error::ParseError(err)),
             }
 
             Ok::<_, Error>(())
@@ -197,11 +222,46 @@ pub fn render(input: String) -> Result<String, Error> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_render() {
-        let input = String::from("<h1>hello world</h1>");
-        let output = render(input);
+    fn assert_render(input: impl Into<String>, expected: impl AsRef<str>) {
+        let output = render(input.into()).unwrap();
+        assert_eq!(output.as_str(), expected.as_ref());
+    }
 
-        assert_eq!(output.as_deref().ok(), Some("# hello world\n"));
+    #[test]
+    fn test_headings() {
+        let levels = 1..6;
+
+        for level in levels {
+            assert_render(
+                format!("<h{level}>hello world</h{level}>"),
+                format!("{} hello world\n", "#".repeat(level)),
+            );
+        }
+    }
+
+    #[test]
+    fn test_paragraph() {
+        assert_render("<p>hello world</p>", "hello world\n");
+    }
+
+    #[test]
+    fn test_wrapped() {
+        assert_render("<div><p>hello world</p></div>", "hello world\n");
+    }
+
+    #[test]
+    fn test_unordered_list() {
+        assert_render(
+            "<ul><li>first item</li><li>second item</li></ul>",
+            "- first item\n- second item\n",
+        );
+    }
+
+    #[test]
+    fn test_ordered_list() {
+        assert_render(
+            "<ol><li>first item</li><li>second item</li></ol>",
+            "1.  first item\n2.  second item\n",
+        );
     }
 }
