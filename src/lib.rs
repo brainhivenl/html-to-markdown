@@ -1,5 +1,5 @@
 //! # HTML to CommonMark
-//! 
+//!
 //! Convert HTML to markdown (CommonMark). Uses [html5ever](https://crates.io/crates/html5ever) for parsing HTML and [comrak](https://crates.io/crates/comrak) for generating markdown output. It generates a comrak AST based on the HTML input and then converts it to markdown using `comrak::format_commonmark`.
 //!
 //! ## Usage
@@ -13,11 +13,11 @@
 //!     println!("{}", markdown); // # Hello World
 //! }
 //! ```
-//! 
+//!
 //! ## Features
-//! 
+//!
 //! The following HTML elements are supported (other elements will be stripped):
-//! 
+//!
 //! - `a`
 //! - `h1`
 //! - `h2`
@@ -45,8 +45,10 @@ use html5ever::{
     Attribute,
 };
 
+mod attributes;
 mod error;
 
+use attributes::AttributeList;
 pub use error::Error;
 
 struct Sink<'a> {
@@ -99,50 +101,62 @@ fn heading<'a>(level: u8, line: usize) -> AstNode<'a> {
 }
 
 #[inline]
-fn attr_or_default(name: &str, attrs: &[Attribute]) -> String {
-    attrs
-        .iter()
-        .find(|a| a.name.prefix.is_none() && &a.name.local == name)
-        .map(|a| a.value.to_string())
-        .unwrap_or_default()
-}
-
-#[inline]
-fn create_node<'a>(name: &str, attrs: &[Attribute], line: usize) -> Option<AstNode<'a>> {
+fn create_node<'a>(
+    arena: &'a Arena<AstNode<'a>>,
+    name: &str,
+    attrs: &[Attribute],
+    line: usize,
+) -> Option<&'a AstNode<'a>> {
     Some(match name {
-        "a" => node(
+        "a" => arena.alloc(node(
             NodeValue::Link(NodeLink {
-                url: attr_or_default("href", attrs),
-                title: attr_or_default("title", attrs),
+                url: attrs.get_or_default("href"),
+                title: attrs.get_or_default("title"),
             }),
             1,
-        ),
-        "h1" => heading(1, line),
-        "h2" => heading(2, line),
-        "h3" => heading(3, line),
-        "h4" => heading(4, line),
-        "h5" => heading(5, line),
-        "h6" => heading(6, line),
-        "p" => node(NodeValue::Paragraph, line),
-        "ul" => node(
+        )),
+        "h1" => arena.alloc(heading(1, line)),
+        "h2" => arena.alloc(heading(2, line)),
+        "h3" => arena.alloc(heading(3, line)),
+        "h4" => arena.alloc(heading(4, line)),
+        "h5" => arena.alloc(heading(5, line)),
+        "h6" => arena.alloc(heading(6, line)),
+        "p" => arena.alloc(node(NodeValue::Paragraph, line)),
+        "ul" => arena.alloc(node(
             NodeValue::List(NodeList {
                 list_type: ListType::Bullet,
                 bullet_char: b'-',
                 ..NodeList::default()
             }),
             line,
-        ),
-        "ol" => node(
+        )),
+        "ol" => arena.alloc(node(
             NodeValue::List(NodeList {
                 list_type: ListType::Ordered,
                 start: 1,
                 ..NodeList::default()
             }),
             line,
-        ),
-        "li" => node(NodeValue::Item(NodeList::default()), line),
-        "b" | "strong" => node(NodeValue::Strong, line),
-        "i" | "em" => node(NodeValue::Emph, line),
+        )),
+        "li" => arena.alloc(node(NodeValue::Item(NodeList::default()), line)),
+        "b" | "strong" => arena.alloc(node(NodeValue::Strong, line)),
+        "i" | "em" => arena.alloc(node(NodeValue::Emph, line)),
+        "img" => {
+            let image = arena.alloc(node(
+                NodeValue::Image(NodeLink {
+                    url: attrs.get_or_default("src"),
+                    title: attrs.get_or_default("title"),
+                }),
+                line,
+            ));
+
+            if let Some(alt) = AttributeList::get(&attrs, "alt") {
+                let text_node = arena.alloc(node(NodeValue::Text(alt.to_string()), line));
+                image.append(text_node);
+            }
+
+            image
+        }
         _ => return None,
     })
 }
@@ -165,6 +179,7 @@ fn valid_elem(name: &str) -> bool {
             | "strong"
             | "i"
             | "em"
+            | "img"
     )
 }
 
@@ -177,8 +192,16 @@ impl<'a> TokenSink for Sink<'a> {
                 Token::DoctypeToken(_) => {}
                 Token::TagToken(tag) => match tag.kind {
                     TagKind::StartTag => {
-                        if let Some(node) = create_node(&tag.name, &tag.attrs, line as usize) {
-                            self.stack.push(self.arena.alloc(node));
+                        if let Some(node) =
+                            create_node(self.arena, &tag.name, &tag.attrs, line as usize)
+                        {
+                            if tag.self_closing {
+                                let parent = self.cur()?;
+
+                                parent.append(node);
+                            } else {
+                                self.stack.push(node);
+                            }
                         }
                     }
                     TagKind::EndTag if !valid_elem(&tag.name) => {}
@@ -310,5 +333,18 @@ mod tests {
     fn test_emphasis() {
         assert_render("<em>hello world</em>", "*hello world*\n");
         assert_render("<i>hello world</i>", "*hello world*\n");
+    }
+
+    #[test]
+    fn test_img() {
+        assert_render("<img src=\"test.jpg\" />", "![](test.jpg)\n");
+        assert_render(
+            "<img src=\"test.jpg\" title=\"this is a test\" />",
+            "![](test.jpg \"this is a test\")\n",
+        );
+        assert_render(
+            "<img src=\"test.jpg\" title=\"this is a test\" alt=\"alt test\" />",
+            "![alt test](test.jpg \"this is a test\")\n",
+        );
     }
 }

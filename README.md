@@ -18,7 +18,6 @@ fn main() {
 
 The following HTML elements are supported (other elements will be stripped):
 
-- `a`
 - `h1`
 - `h2`
 - `h3`
@@ -31,3 +30,5 @@ The following HTML elements are supported (other elements will be stripped):
 - `li`
 - `em`/`i`
 - `strong`/`b`
+- `a`
+- `img`
