@@ -18,7 +18,6 @@
 //!
 //! The following HTML elements are supported (other elements will be stripped):
 //!
-//! - `a`
 //! - `h1`
 //! - `h2`
 //! - `h3`
@@ -31,6 +30,9 @@
 //! - `li`
 //! - `em`/`i`
 //! - `strong`/`b`
+//! - `a`
+//! - `img`
+
 use std::{cell::RefCell, io::Cursor};
 
 use comrak::{
@@ -162,6 +164,28 @@ fn create_node<'a>(
 }
 
 #[inline]
+fn is_self_closing(name: &str) -> bool {
+    matches!(
+        name,
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "keygen"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
+    )
+}
+
+#[inline]
 fn valid_elem(name: &str) -> bool {
     matches!(
         name,
@@ -195,16 +219,15 @@ impl<'a> TokenSink for Sink<'a> {
                         if let Some(node) =
                             create_node(self.arena, &tag.name, &tag.attrs, line as usize)
                         {
-                            if tag.self_closing {
+                            if tag.self_closing || is_self_closing(&tag.name) {
                                 let parent = self.cur()?;
-
                                 parent.append(node);
                             } else {
                                 self.stack.push(node);
                             }
                         }
                     }
-                    TagKind::EndTag if !valid_elem(&tag.name) => {}
+                    TagKind::EndTag if !valid_elem(&tag.name) || is_self_closing(&tag.name) => {}
                     TagKind::EndTag => {
                         let node = self.stack.pop().unwrap();
                         let parent = self.cur()?;
@@ -346,5 +369,11 @@ mod tests {
             "<img src=\"test.jpg\" title=\"this is a test\" alt=\"alt test\" />",
             "![alt test](test.jpg \"this is a test\")\n",
         );
+    }
+
+    #[test]
+    fn test_img_not_self_closing_issue() {
+        assert_render("<img src=\"test.jpg\">", "![](test.jpg)\n");
+        assert_render("<img src=\"test.jpg\"></img>", "![](test.jpg)\n");
     }
 }
