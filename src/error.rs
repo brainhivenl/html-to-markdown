@@ -19,9 +19,9 @@ impl std::error::Error for Error {}
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::IOError(e) => e.fmt(f),
-            Error::ParseError(e) => e.fmt(f),
-            Error::Utf8Error(e) => e.fmt(f),
+            Error::IOError(e) => write!(f, "IOError: {e}"),
+            Error::ParseError(e) => write!(f, "ParseError: {e}"),
+            Error::Utf8Error(e) => write!(f, "Utf8Error: {e}"),
             Error::Other(e) => e.fmt(f),
         }
     }
