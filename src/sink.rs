@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{borrow::Cow, cell::RefCell};
 
 use comrak::{
     nodes::{Ast, AstNode, LineColumn, ListType, NodeHeading, NodeLink, NodeList, NodeValue},
@@ -6,7 +6,7 @@ use comrak::{
 };
 use html5ever::{
     tokenizer::{TagKind, Token, TokenSink, TokenSinkResult},
-    Attribute,
+    Attribute, LocalName,
 };
 
 use crate::attributes::AttributeList;
@@ -16,13 +16,14 @@ pub(crate) struct Sink<'a> {
     strict: bool,
     arena: &'a Arena<AstNode<'a>>,
     error: Option<Error>,
-    stack: Vec<&'a AstNode<'a>>,
+    node_stack: Vec<&'a AstNode<'a>>,
+    elem_stack: Vec<LocalName>,
 }
 
 impl<'a> Sink<'a> {
     #[inline]
     fn cur(&mut self) -> Result<&mut &'a AstNode<'a>, Error> {
-        self.stack
+        self.node_stack
             .last_mut()
             .ok_or_else(move || "stack is empty".into())
     }
@@ -39,7 +40,8 @@ impl<'a> Sink<'a> {
             error: None,
             strict,
             arena,
-            stack: vec![root],
+            node_stack: vec![root],
+            elem_stack: vec![],
         }
     }
 
@@ -48,8 +50,8 @@ impl<'a> Sink<'a> {
             return Err(e);
         }
 
-        let root = self.stack.pop().ok_or("stack is empty")?;
-        assert!(self.stack.is_empty());
+        let root = self.node_stack.pop().ok_or("stack is empty")?;
+        assert!(self.node_stack.is_empty());
 
         Ok(root)
     }
@@ -71,16 +73,24 @@ impl<'a> TokenSink for Sink<'a> {
                                 let parent = self.cur()?;
                                 parent.append(node);
                             } else {
-                                self.stack.push(node);
+                                self.node_stack.push(node);
+                                self.elem_stack.push(tag.name);
                             }
                         }
                     }
                     TagKind::EndTag if !valid_elem(&tag.name) || is_self_closing(&tag.name) => {}
                     TagKind::EndTag => {
-                        let node = self.stack.pop().unwrap();
-                        let parent = self.cur()?;
+                        if self.elem_stack.pop().as_ref() == Some(&tag.name) {
+                            let node = self.node_stack.pop().unwrap();
+                            let parent = self.cur()?;
 
-                        parent.append(node);
+                            parent.append(node);
+                        } else if self.strict {
+                            return Err(Error::ParseError(Cow::Owned(format!(
+                                "unexpected closing tag: </{}>",
+                                tag.name
+                            ))));
+                        }
                     }
                 },
                 Token::CommentToken(_) => {}

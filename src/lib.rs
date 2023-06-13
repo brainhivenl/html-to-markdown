@@ -236,5 +236,11 @@ mod tests {
             "<img src=\"test.jpg\" '=\"\">",
             "![](test.jpg)\n",
         );
+
+        assert_render(
+            RenderOptions { strict: false },
+            "<strong>hello</strong></a>",
+            "**hello**\n",
+        );
     }
 }
