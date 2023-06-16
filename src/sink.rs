@@ -51,7 +51,12 @@ impl<'a> Sink<'a> {
         }
 
         let root = self.node_stack.pop().ok_or("stack is empty")?;
-        assert!(self.node_stack.is_empty());
+
+        if !self.node_stack.is_empty() {
+            return Err(Error::ParseError(Cow::Borrowed(
+                "stack is not empty, probably due to invalid HTML",
+            )));
+        }
 
         Ok(root)
     }
