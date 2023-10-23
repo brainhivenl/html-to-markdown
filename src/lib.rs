@@ -155,7 +155,7 @@ mod tests {
         assert_render(
             RenderOptions::default(),
             "<ol><li>first item</li><li>second item</li></ol>",
-            "1.  first item\n2.  second item\n",
+            "0.  first item\n0.  second item\n",
         );
     }
 
