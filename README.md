@@ -31,4 +31,5 @@ The following HTML elements are supported (other elements will be stripped):
 - `em`/`i`
 - `strong`/`b`
 - `a`
+- `br`
 - `img`
