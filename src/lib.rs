@@ -96,12 +96,15 @@ pub fn parse_document_with_options<'a>(
 }
 
 fn normalize<'a>(arena: &'a Arena<Node<'a, RefCell<Ast>>>, node: &'a Node<'a, RefCell<Ast>>) {
-    let mut ast = node.data.borrow_mut();
-    let pos = ast.deref().sourcepos.start;
+    if let Some(parent) = node.parent() {
+        if matches!(
+            parent.data.borrow().value,
+            NodeValue::Strong | NodeValue::Emph | NodeValue::Strikethrough | NodeValue::Superscript
+        ) {
+            let mut ast = node.data.borrow_mut();
+            let pos = ast.deref().sourcepos.start;
 
-    if let Some(text) = ast.deref_mut().value.text_mut() {
-        if !text.chars().all(|c| c.is_whitespace()) {
-            if let Some(parent) = node.parent() {
+            if let Some(text) = ast.deref_mut().value.text_mut() {
                 let mut prefix = String::new();
 
                 while text.starts_with(' ') {
