@@ -185,6 +185,7 @@ fn create_node<'a>(
         "li" => arena.alloc(node(NodeValue::Item(NodeList::default()), line)),
         "b" | "strong" => arena.alloc(node(NodeValue::Strong, line)),
         "i" | "em" => arena.alloc(node(NodeValue::Emph, line)),
+        "del" => arena.alloc(node(NodeValue::Strikethrough, line)),
         "img" => {
             let image = arena.alloc(node(
                 NodeValue::Image(NodeLink {
@@ -246,5 +247,6 @@ fn valid_elem(name: &str) -> bool {
             | "i"
             | "em"
             | "img"
+            | "del"
     )
 }

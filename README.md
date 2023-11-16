@@ -33,3 +33,4 @@ The following HTML elements are supported (other elements will be stripped):
 - `a`
 - `br`
 - `img`
+- `del`

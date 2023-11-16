@@ -33,6 +33,7 @@
 //! - `strong`/`b`
 //! - `a`
 //! - `img`
+//! - `del`
 
 use std::io::Cursor;
 
