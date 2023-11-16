@@ -100,8 +100,10 @@ impl<'a> TokenSink for Sink<'a> {
                 },
                 Token::CommentToken(_) => {}
                 Token::CharacterTokens(s) => {
-                    self.cur()?
-                        .append(self.arena.alloc(node(NodeValue::Text(s.to_string()), 0)));
+                    self.cur()?.append(
+                        self.arena
+                            .alloc(new_node(NodeValue::Text(s.to_string()), 0)),
+                    );
                 }
                 Token::NullCharacterToken => {}
                 Token::EOFToken => {}
@@ -125,7 +127,7 @@ impl<'a> TokenSink for Sink<'a> {
 }
 
 #[inline]
-fn node<'a>(value: NodeValue, line: usize) -> AstNode<'a> {
+pub fn new_node<'a>(value: NodeValue, line: usize) -> AstNode<'a> {
     AstNode::new(RefCell::new(Ast::new(
         value,
         LineColumn { line, column: 0 },
@@ -134,7 +136,7 @@ fn node<'a>(value: NodeValue, line: usize) -> AstNode<'a> {
 
 #[inline]
 fn heading<'a>(level: u8, line: usize) -> AstNode<'a> {
-    node(
+    new_node(
         NodeValue::Heading(NodeHeading {
             level,
             setext: false,
@@ -151,22 +153,22 @@ fn create_node<'a>(
     line: usize,
 ) -> Option<&'a AstNode<'a>> {
     Some(match name {
-        "a" => arena.alloc(node(
+        "a" => arena.alloc(new_node(
             NodeValue::Link(NodeLink {
                 url: attrs.get_or_default("href"),
                 title: attrs.get_or_default("title"),
             }),
             line,
         )),
-        "br" => arena.alloc(node(NodeValue::LineBreak, line)),
+        "br" => arena.alloc(new_node(NodeValue::LineBreak, line)),
         "h1" => arena.alloc(heading(1, line)),
         "h2" => arena.alloc(heading(2, line)),
         "h3" => arena.alloc(heading(3, line)),
         "h4" => arena.alloc(heading(4, line)),
         "h5" => arena.alloc(heading(5, line)),
         "h6" => arena.alloc(heading(6, line)),
-        "p" => arena.alloc(node(NodeValue::Paragraph, line)),
-        "ul" => arena.alloc(node(
+        "p" => arena.alloc(new_node(NodeValue::Paragraph, line)),
+        "ul" => arena.alloc(new_node(
             NodeValue::List(NodeList {
                 list_type: ListType::Bullet,
                 bullet_char: b'-',
@@ -174,7 +176,7 @@ fn create_node<'a>(
             }),
             line,
         )),
-        "ol" => arena.alloc(node(
+        "ol" => arena.alloc(new_node(
             NodeValue::List(NodeList {
                 list_type: ListType::Ordered,
                 start: 1,
@@ -182,12 +184,12 @@ fn create_node<'a>(
             }),
             line,
         )),
-        "li" => arena.alloc(node(NodeValue::Item(NodeList::default()), line)),
-        "b" | "strong" => arena.alloc(node(NodeValue::Strong, line)),
-        "i" | "em" => arena.alloc(node(NodeValue::Emph, line)),
-        "del" => arena.alloc(node(NodeValue::Strikethrough, line)),
+        "li" => arena.alloc(new_node(NodeValue::Item(NodeList::default()), line)),
+        "b" | "strong" => arena.alloc(new_node(NodeValue::Strong, line)),
+        "i" | "em" => arena.alloc(new_node(NodeValue::Emph, line)),
+        "del" => arena.alloc(new_node(NodeValue::Strikethrough, line)),
         "img" => {
-            let image = arena.alloc(node(
+            let image = arena.alloc(new_node(
                 NodeValue::Image(NodeLink {
                     url: attrs.get_or_default("src"),
                     title: attrs.get_or_default("title"),
@@ -196,7 +198,7 @@ fn create_node<'a>(
             ));
 
             if let Some(alt) = AttributeList::get(&attrs, "alt") {
-                let text_node = arena.alloc(node(NodeValue::Text(alt.to_string()), line));
+                let text_node = arena.alloc(new_node(NodeValue::Text(alt.to_string()), line));
                 image.append(text_node);
             }
 

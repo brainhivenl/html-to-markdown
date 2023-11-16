@@ -35,9 +35,17 @@
 //! - `img`
 //! - `del`
 
-use std::io::Cursor;
+use std::{
+    cell::RefCell,
+    io::Cursor,
+    ops::{Deref, DerefMut},
+};
 
-use comrak::{nodes::AstNode, Arena, ComrakOptions};
+use comrak::{
+    arena_tree::Node,
+    nodes::{Ast, AstNode, NodeValue},
+    Arena, ComrakOptions,
+};
 use html5ever::{
     tendril::StrTendril,
     tokenizer::{BufferQueue, Tokenizer, TokenizerOpts},
@@ -87,6 +95,49 @@ pub fn parse_document_with_options<'a>(
     tok.sink.finish()
 }
 
+fn normalize<'a>(arena: &'a Arena<Node<'a, RefCell<Ast>>>, node: &'a Node<'a, RefCell<Ast>>) {
+    let mut ast = node.data.borrow_mut();
+    let pos = ast.deref().sourcepos.start;
+
+    if let Some(text) = ast.deref_mut().value.text_mut() {
+        if !text.chars().all(|c| c.is_whitespace()) {
+            if let Some(parent) = node.parent() {
+                let mut prefix = String::new();
+
+                while text.starts_with(' ') {
+                    prefix.push(text.remove(0));
+                }
+
+                if !prefix.is_empty() && parent.previous_sibling().is_some() {
+                    parent.insert_before(
+                        arena.alloc(sink::new_node(NodeValue::Text(prefix), pos.line)),
+                    );
+                }
+
+                let mut suffix = String::new();
+
+                while text.ends_with(' ') {
+                    suffix.push(text.pop().unwrap());
+                }
+
+                if !suffix.is_empty() && parent.next_sibling().is_some() {
+                    parent.insert_after(
+                        arena.alloc(sink::new_node(NodeValue::Text(suffix), pos.line)),
+                    );
+                }
+            }
+        }
+    }
+
+    if let Some(node) = node.first_child() {
+        normalize(arena, node);
+    }
+
+    if let Some(node) = node.next_sibling() {
+        normalize(arena, node);
+    }
+}
+
 /// Convert a HTML document into markdown (CommonMark)
 pub fn render(input: String) -> Result<String, Error> {
     render_with_options(RenderOptions::default(), input)
@@ -96,6 +147,7 @@ pub fn render(input: String) -> Result<String, Error> {
 pub fn render_with_options(opts: RenderOptions, input: String) -> Result<String, Error> {
     let arena = Arena::new();
     let root = parse_document_with_options(opts, &arena, input)?;
+    normalize(&arena, root);
 
     let mut writer = Cursor::new(vec![]);
     comrak::format_commonmark(root, &ComrakOptions::default(), &mut writer)?;
@@ -243,6 +295,15 @@ mod tests {
             RenderOptions { strict: false },
             "<strong>hello</strong></a>",
             "**hello**\n",
+        );
+    }
+
+    #[test]
+    fn test_parse_tag_spacing() {
+        assert_render(
+            RenderOptions { strict: true },
+            "xyz<strong> hello </strong>zyx",
+            "xyz **hello** zyx\n",
         );
     }
 }
